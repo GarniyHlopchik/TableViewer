@@ -1,0 +1,22 @@
+<Window Title="hello_csharp" Width="1280" Height="720">
+	<VBox Spacing="0">
+		<MenuBar>
+			<Menu Text="File">
+                <MenuItem Text="New..." Shortcut="Ctrl+N" OnClicked="hello.clicked" />
+                <MenuItem Text="Open..." Shortcut="Ctrl+O" OnClicked="file.open" />
+                <MenuItem Text="Save" Shortcut="Ctrl+S" OnClicked="file.save" />
+                <MenuItem Text="Exit" OnClicked="app.quit" />
+            </Menu>
+            <Menu Text="Edit">
+                <MenuItem Text="Undo" Shortcut="Ctrl+Z" OnClicked="edit.undo" />
+                <MenuItem Text="Redo" Shortcut="Ctrl+Y" OnClicked="edit.redo" />
+                <MenuItem Text="Cut" Shortcut="Ctrl+X" OnClicked="edit.cut" />
+                <MenuItem Text="Copy" Shortcut="Ctrl+C" OnClicked="edit.copy" />
+                <MenuItem Text="Paste" Shortcut="Ctrl+V" OnClicked="edit.paste" />
+            </Menu>
+            <Menu Text="Help">
+                <MenuItem Text="About" OnClicked="help.about" />
+            </Menu>
+		</MenuBar>
+	</VBox>
+</Window>

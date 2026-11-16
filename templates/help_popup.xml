@@ -1,0 +1,7 @@
+<Window Title="Help & Information" Width="400" Height="300" Name="HelpWindow" Visible="true">
+    <VBox Spacing="16" Slot.Padding="20">
+        <Label Text="Application Help" TextSize="18" />
+        <Label Text="This is your help popup content. You can include usage instructions or version details here." Opacity="0.8" />
+        <Button Text="Close" OnClicked="app.close_help" Slot.HAlign="Right"/>
+    </VBox>
+</Window>
