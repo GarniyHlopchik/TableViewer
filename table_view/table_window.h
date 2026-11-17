@@ -28,6 +28,11 @@ protected:
     PCWSTR GetClassName() const override;
 
 private:
+    // Скільки "порожніх" рядків і стовпців показувати за межами моделі
+        static constexpr int kExtra = 2;
+        int DispCols() { return m_model.GetTableSize().first  + kExtra; }
+        int DispRows() { return m_model.GetTableSize().second + kExtra; }
+
     // ---- допоміжні типи ----
     static constexpr UINT WM_EDIT_DONE = WM_APP + 1; // wParam: 1 = зберегти, 0 = скасувати; lParam: HWND edit-а
 

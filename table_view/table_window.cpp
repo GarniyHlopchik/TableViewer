@@ -8,8 +8,6 @@
 // Конструктор / деструктор
 // ============================================================================
 TableWindow::TableWindow() {
-    //тестові дані
-    m_model.SetCell(12, 24, L"УЛСЛЩ");
     HDC dc = GetDC(nullptr);
     int dpi = GetDeviceCaps(dc, LOGPIXELSY);
 
@@ -80,7 +78,7 @@ std::wstring TableWindow::GetCellText(int x, int y) {
 // Розмітка
 // ============================================================================
 void TableWindow::SyncColumns() {
-    int n = m_model.GetTableSize().first;
+    int n = DispCols();
     m_colW.resize(n + 1, m_defColW);
     m_colW[0] = m_indexW;
 }
@@ -93,7 +91,7 @@ int TableWindow::ContentWidth() {
 }
 
 int TableWindow::ContentHeight() {
-    return m_model.GetTableSize().second * m_rowH;
+    return DispRows() * m_rowH;
 }
 
 RECT TableWindow::CellRect(int x, int y) {
@@ -111,10 +109,8 @@ RECT TableWindow::CellRect(int x, int y) {
 
 bool TableWindow::HitTest(int px, int py, int& x, int& y) {
     SyncColumns();
-    auto size = m_model.GetTableSize();
-    int nCols = size.first, nRows = size.second;
+    int nCols = DispCols(), nRows = DispRows();
 
-    // рядок
     if (py < m_rowH) {
         y = 0;
     } else {
@@ -123,7 +119,6 @@ bool TableWindow::HitTest(int px, int py, int& x, int& y) {
         y = r + 1;
     }
 
-    // колонка
     if (px < m_indexW) {
         x = 0;
     } else {
@@ -172,16 +167,23 @@ void TableWindow::UpdateScrollBars() {
 }
 
 void TableWindow::ScrollTo(int newX, int newY) {
-    RECT rc;
-    GetClientRect(m_hwnd, &rc);
-    int viewW = std::max(0, (int)rc.right  - m_indexW);
-    int viewH = std::max(0, (int)rc.bottom - m_rowH);
+    auto clampPos = [&](int& nx, int& ny) {
+        RECT rc;
+        GetClientRect(m_hwnd, &rc);
+        int viewW = std::max(0, (int)rc.right  - m_indexW);
+        int viewH = std::max(0, (int)rc.bottom - m_rowH);
+        nx = std::clamp(nx, 0, std::max(0, ContentWidth()  - viewW));
+        ny = std::clamp(ny, 0, std::max(0, ContentHeight() - viewH));
+    };
 
-    newX = std::clamp(newX, 0, std::max(0, ContentWidth()  - viewW));
-    newY = std::clamp(newY, 0, std::max(0, ContentHeight() - viewH));
+    clampPos(newX, newY);
     if (newX == m_scrollX && newY == m_scrollY) return;
 
-    EndEdit(true);
+    if (m_edit) {
+        EndEdit(true);          // може змінити розмір таблиці
+        clampPos(newX, newY);
+    }
+
     m_scrollX = newX;
     m_scrollY = newY;
     SetScrollPos(m_hwnd, SB_HORZ, m_scrollX, TRUE);
@@ -242,6 +244,7 @@ void TableWindow::EnsureVisible(int x, int y) {
 // ============================================================================
 void TableWindow::CycleSort(int col) {
     EndEdit(true);
+    if (col > m_model.GetTableSize().first) return;   // додатковий стовпець - нема за чим сортувати
     std::pair<bool, int> state = m_model.GetSortingState(); // {is_ascending, column}
     bool asc = state.first;
     int curCol = state.second;
@@ -260,10 +263,9 @@ void TableWindow::CycleSort(int col) {
 // Редагування комірки
 // ============================================================================
 void TableWindow::BeginEdit(int x, int y) {
-    auto size = m_model.GetTableSize();
-    if (x < 1 || x > size.first || y < 0 || y > size.second) return;
+    EndEdit(true);   // коміт міг змінити розмір, тому перевірка меж тільки після нього
 
-    EndEdit(true);
+    if (x < 1 || x > DispCols() || y < 0 || y > DispRows()) return;
     EnsureVisible(x, y);
 
     RECT r = CellRect(x, y);
@@ -287,7 +289,7 @@ void TableWindow::EndEdit(bool commit) {
     if (!m_edit) return;
 
     HWND edit = m_edit;
-    m_edit = nullptr; // спершу обнуляємо: WM_KILLFOCUS від DestroyWindow буде проігноровано
+    m_edit = nullptr;
     bool hadFocus = (GetFocus() == edit);
 
     if (commit) {
@@ -296,12 +298,26 @@ void TableWindow::EndEdit(bool commit) {
         GetWindowTextW(edit, &text[0], len + 1);
         text.resize(len);
 
-        // Координати саме ті, що бачить користувач; модель сама мапить рядок
+        // Новий запис дописується в кінець m_records. При активному сортуванні
+        // рядок на екрані != рядок у векторі, тому скидаємо сортування до дефолтного
+        // (стовпець 0, за зростанням, тобто тотожна перестановка).
+        if (!text.empty() && m_editY > m_model.GetTableSize().second) {
+            std::pair<bool, int> s = m_model.GetSortingState();
+            if (!(s.second == 0 && s.first)) m_model.SortBy(0, true);
+        }
+
         m_model.SetCell(m_editX, m_editY, text);
+
+        // Модель могла згорнутись: стовпець сортування міг зникнути
+        auto size = m_model.GetTableSize();
+        if (m_model.GetSortingState().second > size.first) m_model.SortBy(0, true);
+        if (m_selX > DispCols() || m_selY > DispRows()) m_selX = m_selY = -1;
     }
 
     DestroyWindow(edit);
     if (hadFocus) SetFocus(m_hwnd);
+
+    UpdateScrollBars();   // розмір таблиці міг змінитись
     InvalidateRect(m_hwnd, nullptr, FALSE);
 }
 
@@ -337,7 +353,7 @@ void TableWindow::Refresh() {
     EndEdit(false);
     SyncColumns();
     auto size = m_model.GetTableSize();
-    if (m_selX > size.first || m_selY > size.second) m_selX = m_selY = -1;
+     if (m_selX > DispCols() || m_selY > DispRows()) m_selX = m_selY = -1;
     UpdateScrollBars();
     InvalidateRect(m_hwnd, nullptr, FALSE);
 }
@@ -470,8 +486,9 @@ void TableWindow::OnPaint() {
 
     if (w > 0 && h > 0) {
         SyncColumns();
-        auto size = m_model.GetTableSize();
-        const int nCols = size.first, nRows = size.second;
+        auto real = m_model.GetTableSize();
+        const int realCols = real.first, realRows = real.second;   // справжні межі
+        const int nCols = realCols + kExtra, nRows = realRows + kExtra; // що показуємо
         const int indexW = m_indexW, headerH = m_rowH;
 
         HDC mem = CreateCompatibleDC(hdc);
@@ -486,22 +503,22 @@ void TableWindow::OnPaint() {
         const COLORREF white  = GetSysColor(COLOR_WINDOW);
         const COLORREF header = GetSysColor(COLOR_BTNFACE);
 
-        std::pair<bool, int> sort = m_model.GetSortingState(); // {asc, column}
+        std::pair<bool, int> sort = m_model.GetSortingState();
         auto headerText = [&](int col, std::wstring base) {
             if (col == sort.second && !(col == 0 && sort.first))
                 base += sort.first ? L" \u25B2" : L" \u25BC";
             return base;
         };
 
-        // ---- 1. Клітинки даних (скролляться в обох напрямках) ----
+        const int firstRow = m_scrollY / m_rowH;
+        const int lastRow  = std::min(nRows - 1, (m_scrollY + h - headerH) / m_rowH);
+
+        // ---- 1. Клітинки даних ----
         if (nRows > 0) {
             int saved = SaveDC(mem);
             IntersectClipRect(mem, indexW, headerH, w, h);
 
-            int firstRow = m_scrollY / m_rowH;
-            int lastRow  = std::min(nRows - 1, (m_scrollY + h - headerH) / m_rowH);
             int left = indexW - m_scrollX;
-
             for (int c = 1; c <= nCols; ++c) {
                 int cw = m_colW[c];
                 if (left + cw > indexW && left < w) {
@@ -521,7 +538,7 @@ void TableWindow::OnPaint() {
             RestoreDC(mem, saved);
         }
 
-        // ---- 2. Рядок заголовків (скролиться лише горизонтально) ----
+        // ---- 2. Рядок заголовків ----
         {
             int saved = SaveDC(mem);
             IntersectClipRect(mem, indexW, 0, w, headerH);
@@ -539,28 +556,64 @@ void TableWindow::OnPaint() {
             RestoreDC(mem, saved);
         }
 
-        // ---- 3. Стовпець нумерації (скролиться лише вертикально) ----
-        if (nRows > 0) {
+        // ---- 3. Стовпець нумерації (для додаткових рядків - порожній) ----
+        {
             int saved = SaveDC(mem);
             IntersectClipRect(mem, 0, headerH, indexW, h);
-
-            int firstRow = m_scrollY / m_rowH;
-            int lastRow  = std::min(nRows - 1, (m_scrollY + h - headerH) / m_rowH);
             for (int r = firstRow; r <= lastRow; ++r) {
                 RECT cell;
                 cell.left   = 0;
                 cell.right  = indexW;
                 cell.top    = headerH - m_scrollY + r * m_rowH;
                 cell.bottom = cell.top + m_rowH;
-                DrawCell(mem, cell, std::to_wstring(RowNumber(r)), header, DT_CENTER, false);
+                std::wstring num = (r < realRows) ? std::to_wstring(RowNumber(r)) : L"";
+                DrawCell(mem, cell, num, header, DT_CENTER, false);
             }
             RestoreDC(mem, saved);
         }
 
-        // ---- 4. Верхній лівий кут (не скролиться) ----
+        // ---- 4. Верхній лівий кут ----
         {
             RECT corner = { 0, 0, indexW, headerH };
             DrawCell(mem, corner, headerText(0, L"\u2116"), header, DT_CENTER, false);
+        }
+
+        // ---- 5. Товста чорна рамка навколо справжніх меж таблиці ----
+        {
+            const int t = 3; // товщина
+            int realW = 0;
+            for (int c = 1; c <= realCols; ++c) realW += m_colW[c];
+
+            const int realRight  = indexW + realW - m_scrollX;
+            const int realBottom = headerH + realRows * m_rowH - m_scrollY;
+            const int rightEnd   = std::max(indexW,  std::min(realRight  + 1, w));
+            const int bottomEnd  = std::max(headerH, std::min(realBottom + 1, h));
+
+            HBRUSH black = (HBRUSH)GetStockObject(BLACK_BRUSH);
+
+            // Ліва та верхня сторони завжди біля краю вікна (нумерація й заголовки закріплені)
+            RECT leftEdge = { 0, 0, t, bottomEnd };
+            RECT topEdge  = { 0, 0, rightEnd, t };
+            FillRect(mem, &leftEdge, black);
+            FillRect(mem, &topEdge,  black);
+
+            // Права сторона: рухається при горизонтальному скролі, не заходить у стовпець нумерації
+            {
+                int saved = SaveDC(mem);
+                IntersectClipRect(mem, indexW - (t - 1), 0, w, h);
+                RECT rightEdge = { realRight - (t - 1), 0, realRight + 1, bottomEnd };
+                FillRect(mem, &rightEdge, black);
+                RestoreDC(mem, saved);
+            }
+
+            // Нижня сторона: рухається при вертикальному скролі, не заходить у рядок заголовків
+            {
+                int saved = SaveDC(mem);
+                IntersectClipRect(mem, 0, headerH - (t - 1), w, h);
+                RECT bottomEdge = { 0, realBottom - (t - 1), rightEnd, realBottom + 1 };
+                FillRect(mem, &bottomEdge, black);
+                RestoreDC(mem, saved);
+            }
         }
 
         BitBlt(hdc, 0, 0, w, h, mem, 0, 0, SRCCOPY);
