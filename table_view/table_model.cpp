@@ -4,6 +4,11 @@
 #include <windows.h> // для CompareStringOrdinal
 #include "table_model.h"
 
+void TableModel::Clear(){
+    m_headers.clear();
+    m_records.clear();
+}
+
 void TableModel::SetCell(int x, int y, std::wstring value){ // x > 0; y >= 0
     if (x <= 0 || y < 0) return;
 

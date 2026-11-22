@@ -16,6 +16,7 @@ set(TABLEVIEWER_SOURCES
     win_classes/window.cpp
     table_view/table_model.cpp
     table_view/table_window.cpp
+    saveload.cpp
     main.cpp
 )
 

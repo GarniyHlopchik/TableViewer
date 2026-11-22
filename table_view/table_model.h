@@ -11,6 +11,7 @@ class TableModel{
         //y - номер рядку, притому 0 це рядок хеадерів
         void SetCell(int x, int y, std::wstring value);
         void SortBy(int col, bool is_ascending);
+        void Clear();
         std::pair<bool,int> GetSortingState(); // is_ascending + column
         std::pair<int,int> GetTableSize(); //header amount + record amount
         std::vector<std::wstring>& GetHeaders();

@@ -1,6 +1,8 @@
+//#include <minwindef.h>
 #define NOMINMAX
 #include "table_window.h"
 #include <algorithm>
+#include "../saveload.h"
 
 #pragma comment(lib, "comctl32.lib")
 
@@ -39,14 +41,68 @@ bool TableWindow::Create(PCWSTR title, DWORD style, DWORD exStyle,
                          int x, int y, int width, int height,
                          HWND parent, HMENU menu)
 {
+    HMENU hMenu = CreateMenu();
+
+    HMENU hFileMenu = CreatePopupMenu();
+    AppendMenuW(hFileMenu, MF_STRING, BTN_SAVE, L"Зберегти");
+    AppendMenuW(hFileMenu, MF_STRING, BTN_SAVE_AS, L"Зберегти як");
+    AppendMenuW(hFileMenu, MF_STRING, BTN_OPEN, L"Відкрити");
+
+    AppendMenuW(hMenu, MF_POPUP, (UINT_PTR)hFileMenu, L"Меню");
+
     return Window::Create(title, style | WS_HSCROLL | WS_VSCROLL | WS_CLIPCHILDREN,
-                          exStyle, x, y, width, height, parent, menu);
+                          exStyle, x, y, width, height, parent, hMenu);
+}
+
+//=============================================
+// кнопки
+// ===========================
+LRESULT TableWindow::OnCommand(int id, int eventCode, HWND controlHandle){
+    if (eventCode == BN_CLICKED) {
+        switch(id){
+            case BTN_SAVE_AS:{
+                std::wstring tabledata = SaveLoad::TableToWString(m_model);
+                std::wstring path;
+
+                if(!SaveLoad::GetSavePath(m_hwnd, path)){
+                    break;
+                }
+                SaveLoad::SaveWString(path, tabledata);
+                m_last_save_path = path;
+                break;
+            }
+            case BTN_SAVE:{
+                if(m_last_save_path == L""){
+                    break;
+                }
+                std::wstring tabledata = SaveLoad::TableToWString(m_model);
+                SaveLoad::SaveWString(m_last_save_path, tabledata);
+                break;
+            }
+            case BTN_OPEN:{
+                std::wstring path;
+                if(!SaveLoad::GetOpenPath(m_hwnd, path)){
+                    break;
+                }
+                std::vector<unsigned char> raw_data;
+                if(!SaveLoad::ReadFileBytes(path, raw_data)){
+                    break;
+                }
+                std::wstring tabledata = SaveLoad::BytesToWString(raw_data);
+                m_model.Clear();
+                SaveLoad::WStringToTable(tabledata, m_model);
+                Refresh();
+                m_last_save_path = path;
+                break;
+            }
+        }
+    }
+    return Window::OnCommand(id, eventCode, controlHandle);
 }
 
 // ============================================================================
 // Дані
 // ============================================================================
-// Припущення: GetSortIndices()[displayRow] = індекс запису в GetRecords().
 int TableWindow::RecordIndex(int displayRow) const {
     const std::vector<int>& idx = const_cast<TableModel&>(m_model).GetSortIndices();
     if (displayRow >= 0 && (size_t)displayRow < idx.size())

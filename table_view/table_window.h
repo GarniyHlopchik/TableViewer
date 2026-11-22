@@ -3,8 +3,13 @@
 
 #include "window.h"
 #include "table_model.h"
+//#include <minwindef.h>
 #include <string>
 #include <vector>
+
+#define BTN_SAVE_AS 1
+#define BTN_SAVE 2
+#define BTN_OPEN 3
 
 class TableWindow : public Window {
 public:
@@ -24,10 +29,13 @@ public:
 
 protected:
     LRESULT HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) override;
+    LRESULT OnCommand(int id, int eventCode, HWND controlHandle) override;
     void OnPaint() override;
     PCWSTR GetClassName() const override;
 
 private:
+    std::wstring m_last_save_path;
+
     // Скільки "порожніх" рядків і стовпців показувати за межами моделі
         static constexpr int kExtra = 2;
         int DispCols() { return m_model.GetTableSize().first  + kExtra; }
