@@ -12,7 +12,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
  # TableViewer exe ----------
 
 set(TABLEVIEWER_SOURCES
-    win_classes/dialogue_window.cpp
     win_classes/window.cpp
     table_view/table_model.cpp
     table_view/table_window.cpp
